@@ -14,12 +14,12 @@
 // es a leggyakoribb hibakrol (pl. ideiglenes objektumot nem lehet referencia tipusnak ertekul adni)
 // a hazibeado portal ad egy osszefoglalot.
 // ---------------------------------------------------------------------------------------------
-// A feladatmegoldasokban csak olyan OpenGL/GLUT fuggvenyek hasznalhatok, amelyek az oran a feladatkiadasig elhangzottak 
+// A feladatmegoldasokban csak olyan OpenGL/GLUT fuggvenyek hasznalhatok, amelyek az oran a feladatkiadasig elhangzottak
 //
 // NYILATKOZAT
 // ---------------------------------------------------------------------------------------------
-// Nev    : 
-// Neptun : 
+// Nev    :
+// Neptun :
 // ---------------------------------------------------------------------------------------------
 // ezennel kijelentem, hogy a feladatot magam keszitettem, es ha barmilyen segitseget igenybe vettem vagy
 // mas szellemi termeket felhasznaltam, akkor a forrast es az atvett reszt kommentekben egyertelmuen jeloltem.
@@ -47,7 +47,7 @@
 #if defined(WIN32) || defined(_WIN32) || defined(__WIN32__)
 #include <windows.h>
 #endif
-#include <GL/glew.h>		// must be downloaded 
+#include <GL/glew.h>		// must be downloaded
 #include <GL/freeglut.h>	// must be downloaded unless you have an Apple
 #endif
 
@@ -175,6 +175,7 @@ public:
 // row-major matrix 4x4
 struct mat4 {
     float m[4][4];
+
 public:
     mat4() {}
     mat4(float m00, float m01, float m02, float m03,
@@ -197,6 +198,34 @@ public:
         }
         return result;
     }
+
+    static mat4 rotateX(float angle) {
+        return mat4(
+                1, 0, 0, 0,
+                0, cosf(angle), -sinf(angle), 0,
+                0, sinf(angle), cosf(angle), 0,
+                0, 0, 0, 1
+        );
+    }
+
+    static mat4 rotateY(float angle) {
+        return mat4(
+                cosf(angle), 0, sinf(angle), 0,
+                0, 1, 0, 0,
+                -sinf(angle), 0, cosf(angle), 0,
+                0, 0, 0, 1
+        );
+    }
+
+    static mat4 rotateZ(float angle) {
+        return mat4(
+                cosf(angle), -sinf(angle), 0, 0,
+                sinf(angle), cosf(angle), 0, 0,
+                0, 0, 1, 0,
+                0, 0, 0, 1
+        );
+    }
+
     operator float*() { return &m[0][0]; }
 };
 
@@ -231,8 +260,7 @@ struct Camera {
     float wCx, wCy, wCz;	// center in world coordinates
     float wWx, wWy, wWz;	// width and height in world coordinates
 public:
-    Camera() : wCx(0), wCy(0), wCz(0), wWx(20), wWy(20), wWz(20) {
-    }
+    Camera() : wCx(0), wCy(0), wCz(0), wWx(20), wWy(20), wWz(20) {}
 
     mat4 V() { // view matrix: translates the center to the origin
         return mat4(1,    0, 0, 0,
@@ -399,6 +427,8 @@ struct VertexData {
     float u, v;
 };
 
+static float angle = 0.0f;
+
 class ParamSurface {
     GLuint vao;
     GLuint vbo[2];
@@ -462,14 +492,16 @@ public:
     }
 
     void Draw() {
-        mat4 scale(
+        /*mat4 scale(
                 1, 0, 0, 0,
                 0, 0.5, 0, 0,
                 0, 0, 1, 0,
                 0, 0, 0, 1
-        );
+        );*/
 
-        mat4 VPTransform = scale * camera.V() * camera.P();
+        mat4 VPTransform = mat4::rotateX(angle) * mat4::rotateZ(angle) * camera.V() * camera.P();
+
+        angle += 0.08f;
 
         int location = glGetUniformLocation(shaderProgram, "MVP");
 
@@ -489,9 +521,9 @@ class Cylinder : public ParamSurface {
 
     VertexData generateVertexData(float u, float v) {
         vec3 normal = vec3(
-                cosf(u * 2 * M_PI) * sinf(v * M_PI),
+                cosf(u * 2 * M_PI) * sinf(v *  M_PI),
                 sinf(u * 2 * M_PI) * sinf(v *  M_PI),
-                cosf(v * M_1_PI)
+                cosf(v * M_PI)
         );
 
         vec3 position = normal * radius;
@@ -502,11 +534,17 @@ class Cylinder : public ParamSurface {
                 radius * sinf(v)
         );
 */
+       /* position = vec3(
+            radius * v,//radius * cosf(v * M_PI),
+            radius * v, // sinf(v * M_PI),
+            radius * u
+        );*/
+
         position = vec3(
-            radius * cosf(u),
-            radius * sinf(u),
-            0
-        );
+                cosf(u * 2 * M_PI) * sinf(v *  M_PI),
+                sinf(u  * M_PI) * sinf(v *  M_PI),
+                0
+        ) * radius;
 
         vec4 wVertex = vec4(position, 1) * camera.Pinv() * camera.Vinv();
 
@@ -523,7 +561,7 @@ public:
 };
 
 // The virtual world: collection of two objects
-Cylinder cyl(0.5);
+Cylinder cyl(0.5f);
 
 // Initialization, create an OpenGL context
 void onInitialization() {
