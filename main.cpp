@@ -479,7 +479,7 @@ public:
 
         for(auto i = 0; i < nVertices; i++) {
             //printf("%f\n", (i / (float)nVertices));
-            vertexColors[i] = vec3(0, (i / (float)nVertices), 0);
+            vertexColors[i] = vec3(1.0f - (i / (float)nVertices), (i / (float)nVertices), 0);
         }
 
         glBindBuffer(GL_ARRAY_BUFFER, vbo[1]); // make it active, it is an array
@@ -552,6 +552,12 @@ class Cylinder : public ParamSurface {
             radius * cosf(u * 2 * M_PI),
             radius * sinf(v * 2 * M_PI),
             sinf(u * M_PI) * cosf(u * M_PI) //sinf(u * M_PI) * cosf(u * M_PI)
+        );
+
+        position = vec3(
+                radius * cosf(u * 2 * M_PI),
+                radius * sinf(u * 2 * M_PI),
+                v
         );
 
         vec4 wVertex = vec4(position, 1) * camera.Pinv() * camera.Vinv();
