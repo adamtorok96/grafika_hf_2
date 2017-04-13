@@ -99,13 +99,13 @@ const char * vertexSource = R"(
 
 	uniform mat4 MVP;			// Model-View-Projection matrix in row-major format
 
-	layout(location = 0) in vec2 vertexPosition;	// Attrib Array 0
+	layout(location = 0) in vec3 vertexPosition;	// Attrib Array 0
 	layout(location = 1) in vec3 vertexColor;	    // Attrib Array 1
 	out vec3 color;									// output attribute
 
 	void main() {
 		color = vertexColor;														// copy color from input to output
-		gl_Position = vec4(vertexPosition.x, vertexPosition.y, 0, 1) * MVP; 		// transform to clipping space
+		gl_Position = vec4(vertexPosition.x, vertexPosition.y, vertexPosition.z, 1) * MVP; 		// transform to clipping space
 	}
 )";
 
@@ -121,6 +121,56 @@ const char * fragmentSource = R"(
 		fragmentColor = vec4(color, 1); // extend RGB to RGBA
 	}
 )";
+
+class vec3 {
+
+public:
+    float x, y, z;
+
+    vec3() : x(0), y(0), z(0) {}
+
+    vec3(float x, float y) {
+        this->x = x;
+        this->y = y;
+        this->z = 0;
+    }
+
+    vec3(float x, float y, float z) {
+        this->x = x;
+        this->y = y;
+        this->z = z;
+    }
+
+    vec3 operator*(float n) {
+        return vec3(
+                x * n,
+                y * n,
+                z * n
+        );
+    }
+
+    vec3 operator*(double n) {
+        return vec3(
+                x * (float) n,
+                y * (float) n,
+                z * (float) n
+        );
+    }
+
+    vec3 operator+(vec3 const & vec) {
+        return vec3(
+                x + vec.x,
+                y + vec.y,
+                z + vec.z
+        );
+    }
+
+    void operator+=(vec3 const & vec) {
+        this->x += vec.x;
+        this->y += vec.y;
+        this->z += vec.z;
+    }
+};
 
 // row-major matrix 4x4
 struct mat4 {
@@ -155,6 +205,13 @@ public:
 struct vec4 {
     float v[4];
 
+    vec4(vec3 const & vec, float w = 1.0f) {
+        v[0] = vec.x;
+        v[1] = vec.y;
+        v[2] = vec.z;
+        v[3] = w;
+    }
+
     vec4(float x = 0, float y = 0, float z = 0, float w = 1) {
         v[0] = x; v[1] = y; v[2] = z; v[3] = w;
     }
@@ -171,24 +228,23 @@ struct vec4 {
 
 // 2D camera
 struct Camera {
-    float wCx, wCy;	// center in world coordinates
-    float wWx, wWy;	// width and height in world coordinates
+    float wCx, wCy, wCz;	// center in world coordinates
+    float wWx, wWy, wWz;	// width and height in world coordinates
 public:
-    Camera() {
-        Animate(0);
+    Camera() : wCx(0), wCy(0), wCz(0), wWx(20), wWy(20), wWz(20) {
     }
 
     mat4 V() { // view matrix: translates the center to the origin
         return mat4(1,    0, 0, 0,
                     0,    1, 0, 0,
                     0,    0, 1, 0,
-                    -wCx, -wCy, 0, 1);
+                    -wCx, -wCy, -wCz, 1);
     }
 
     mat4 P() { // projection matrix: scales it to be a square of edge length 2
-        return mat4(2/wWx,    0, 0, 0,
-                    0,    2/wWy, 0, 0,
-                    0,        0, 1, 0,
+        return mat4(2 / wWx,    0, 0, 0,
+                    0,    2 / wWy, 0, 0,
+                    0,        0, 2 / wWz, 0,
                     0,        0, 0, 1);
     }
 
@@ -196,21 +252,14 @@ public:
         return mat4(1,     0, 0, 0,
                     0,     1, 0, 0,
                     0,     0, 1, 0,
-                    wCx, wCy, 0, 1);
+                    wCx, wCy, wCz, 1);
     }
 
     mat4 Pinv() { // inverse projection matrix
-        return mat4(wWx/2, 0,    0, 0,
-                    0, wWy/2, 0, 0,
-                    0,  0,    1, 0,
+        return mat4(wWx / 2, 0,    0, 0,
+                    0, wWy / 2, 0, 0,
+                    0,  0,    wWz / 2, 0,
                     0,  0,    0, 1);
-    }
-
-    void Animate(float t) {
-        wCx = 0; // 10 * cosf(t);
-        wCy = 0;
-        wWx = 20;
-        wWy = 20;
     }
 };
 
@@ -242,10 +291,10 @@ public:
         glBufferData(GL_ARRAY_BUFFER,      // copy to the GPU
                      sizeof(vertexCoords), // number of the vbo in bytes
                      vertexCoords,		   // address of the data array on the CPU
-                     GL_STATIC_DRAW);	   // copy to that part of the memory which is not modified 
+                     GL_STATIC_DRAW);	   // copy to that part of the memory which is not modified
         // Map Attribute Array 0 to the current bound vertex buffer (vbo[0])
         glEnableVertexAttribArray(0);
-        // Data organization of Attribute Array 0 
+        // Data organization of Attribute Array 0
         glVertexAttribPointer(0,			// Attribute Array 0
                               2, GL_FLOAT,  // components/attribute, component type
                               GL_FALSE,		// not in fixed point format, do not normalized
@@ -345,17 +394,142 @@ public:
     }
 };
 
+struct VertexData {
+    vec3 position, normal;
+    float u, v;
+};
+
+class ParamSurface {
+    GLuint vao;
+    GLuint vbo[2];
+
+    unsigned int nVertices;
+
+protected:
+    virtual VertexData generateVertexData(float u, float v) = 0;
+
+public:
+
+    void Create() {
+        glGenVertexArrays(1, &vao);
+        glBindVertexArray(vao);
+
+        glGenBuffers(2, &vbo[0]);
+        glBindBuffer(GL_ARRAY_BUFFER, vbo[0]);
+
+        unsigned int N = 40;
+        unsigned int M = N;
+        nVertices = N * M * 6;
+
+        VertexData * vtx = new VertexData[nVertices], *pVtx = vtx;
+
+        for (float i = 0.0f; i < N; i++) {
+            for (float j = 0.0f; j < M; j++) {
+                *pVtx++ = generateVertexData(i / N,        j / M);
+                *pVtx++ = generateVertexData((i + 1) / N,  j / M);
+                *pVtx++ = generateVertexData(i / N,        (j + 1) / M);
+                *pVtx++ = generateVertexData((i + 1) / N,  j / M);
+                *pVtx++ = generateVertexData((i + 1) / N,  (j + 1) / M);
+                *pVtx++ = generateVertexData(i / N,        (j + 1) / M);
+            }
+        }
+
+        glBufferData(GL_ARRAY_BUFFER, nVertices * sizeof(VertexData), vtx, GL_STATIC_DRAW);
+
+        glEnableVertexAttribArray(0);  // AttribArray 0 = POSITION
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(VertexData), (void*)0);
+
+        glEnableVertexAttribArray(1);  // AttribArray 1 = NORMAL
+        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(VertexData), (void*)offsetof(VertexData, normal));
+
+        glEnableVertexAttribArray(2);  // AttribArray 2 = UV
+        glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(VertexData), (void*)offsetof(VertexData, u));
+
+        vec3 * vertexColors = new vec3[nVertices];
+
+        for(auto i = 0; i < nVertices; i++) {
+            vertexColors[i] = vec3(1, 0, 0);
+        }
+
+        glBindBuffer(GL_ARRAY_BUFFER, vbo[1]); // make it active, it is an array
+        glBufferData(GL_ARRAY_BUFFER, sizeof(vec3) * nVertices, vertexColors, GL_STATIC_DRAW);	// copy to the GPU
+
+        glEnableVertexAttribArray(1);
+        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, NULL);
+
+        delete[] vtx;
+        delete[] vertexColors;
+    }
+
+    void Draw() {
+        mat4 scale(
+                1, 0, 0, 0,
+                0, 0.5, 0, 0,
+                0, 0, 1, 0,
+                0, 0, 0, 1
+        );
+
+        mat4 VPTransform = scale * camera.V() * camera.P();
+
+        int location = glGetUniformLocation(shaderProgram, "MVP");
+
+        if (location >= 0)
+            glUniformMatrix4fv(location, 1, GL_TRUE, VPTransform);
+        else
+            printf("uniform MVP cannot be set\n");
+
+        glBindVertexArray(vao);
+        glDrawArrays(GL_TRIANGLES, 0, nVertices); // GL_LINE_STRIP GL_TRIANGLES
+
+    }
+};
+
+class Cylinder : public ParamSurface {
+    float radius;
+
+    VertexData generateVertexData(float u, float v) {
+        vec3 normal = vec3(
+                cosf(u * 2 * M_PI) * sinf(v * M_PI),
+                sinf(u * 2 * M_PI) * sinf(v *  M_PI),
+                cosf(v * M_1_PI)
+        );
+
+        vec3 position = normal * radius;
+        /*
+        vec3 position = vec3(
+                u,
+                radius * cosf(v),
+                radius * sinf(v)
+        );
+*/
+        position = vec3(
+            radius * cosf(u),
+            radius * sinf(u),
+            0
+        );
+
+        vec4 wVertex = vec4(position, 1) * camera.Pinv() * camera.Vinv();
+
+        return {
+                vec3(wVertex.v[0], wVertex.v[1], wVertex.v[2]),
+                vec3(),
+                u, v
+        };
+    }
+
+public:
+    Cylinder(float rad) : radius(rad) {}
+
+};
+
 // The virtual world: collection of two objects
-Triangle triangle;
-LineStrip lineStrip;
+Cylinder cyl(0.5);
 
 // Initialization, create an OpenGL context
 void onInitialization() {
     glViewport(0, 0, windowWidth, windowHeight);
 
-    // Create objects by setting up their vertex data on the GPU
-    lineStrip.Create();
-    triangle.Create();
+    cyl.Create();
 
     // Create vertex shader from string
     unsigned int vertexShader = glCreateShader(GL_VERTEX_SHADER);
@@ -403,17 +577,18 @@ void onExit() {
 
 // Window has become invalid: Redraw
 void onDisplay() {
-    glClearColor(0, 0, 0, 0);							// background color 
+    glClearColor(0, 0, 0, 0);							// background color
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // clear the screen
 
-    triangle.Draw();
-    lineStrip.Draw();
-    glutSwapBuffers();									// exchange the two buffers
+    cyl.Draw();
+
+    glutSwapBuffers();
 }
 
 // Key of ASCII code pressed
 void onKeyboard(unsigned char key, int pX, int pY) {
-    if (key == 'd') glutPostRedisplay();         // if d, invalidate display, i.e. redraw
+    if (key == 'd')
+        glutPostRedisplay();         // if d, invalidate display, i.e. redraw
 }
 
 // Key of ASCII code released
@@ -426,7 +601,7 @@ void onMouse(int button, int state, int pX, int pY) {
     if (button == GLUT_LEFT_BUTTON && state == GLUT_DOWN) {  // GLUT_LEFT_BUTTON / GLUT_RIGHT_BUTTON and GLUT_DOWN / GLUT_UP
         float cX = 2.0f * pX / windowWidth - 1;	// flip y axis
         float cY = 1.0f - 2.0f * pY / windowHeight;
-        lineStrip.AddPoint(cX, cY);
+
         glutPostRedisplay();     // redraw
     }
 }
@@ -439,8 +614,7 @@ void onMouseMotion(int pX, int pY) {
 void onIdle() {
     long time = glutGet(GLUT_ELAPSED_TIME); // elapsed time since the start of the program
     float sec = time / 1000.0f;				// convert msec to sec
-    camera.Animate(sec);					// animate the camera
-    triangle.Animate(sec);					// animate the triangle object
+
     glutPostRedisplay();					// redraw the scene
 }
 
