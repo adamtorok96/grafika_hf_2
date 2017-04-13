@@ -478,7 +478,8 @@ public:
         vec3 * vertexColors = new vec3[nVertices];
 
         for(auto i = 0; i < nVertices; i++) {
-            vertexColors[i] = vec3(1, 0, 0);
+            //printf("%f\n", (i / (float)nVertices));
+            vertexColors[i] = vec3(0, (i / (float)nVertices), 0);
         }
 
         glBindBuffer(GL_ARRAY_BUFFER, vbo[1]); // make it active, it is an array
@@ -499,9 +500,9 @@ public:
                 0, 0, 0, 1
         );*/
 
-        mat4 VPTransform = mat4::rotateX(angle) * mat4::rotateZ(angle) * camera.V() * camera.P();
+        mat4 VPTransform = mat4::rotateX(angle) * camera.V() * camera.P();
 
-        angle += 0.08f;
+        angle += 0.06f;
 
         int location = glGetUniformLocation(shaderProgram, "MVP");
 
@@ -540,11 +541,18 @@ class Cylinder : public ParamSurface {
             radius * u
         );*/
 
-        position = vec3(
+        /*position = vec3(
                 cosf(u * 2 * M_PI) * sinf(v *  M_PI),
-                sinf(u  * M_PI) * sinf(v *  M_PI),
-                0
+                sinf(u * 2 * M_PI) * sinf(v *  M_PI),
+                cosf(v * M_PI)
         ) * radius;
+        */
+
+        position = vec3(
+            radius * cosf(u * 2 * M_PI),
+            radius * sinf(v * 2 * M_PI),
+            radius * sinf(u * M_PI) * cosf(u * M_PI)
+        );
 
         vec4 wVertex = vec4(position, 1) * camera.Pinv() * camera.Vinv();
 
