@@ -551,7 +551,7 @@ class Cylinder : public ParamSurface {
         position = vec3(
             radius * cosf(u * 2 * M_PI),
             radius * sinf(v * 2 * M_PI),
-            radius * sinf(u * M_PI) * cosf(u * M_PI)
+            sinf(u * M_PI) * cosf(u * M_PI) //sinf(u * M_PI) * cosf(u * M_PI)
         );
 
         vec4 wVertex = vec4(position, 1) * camera.Pinv() * camera.Vinv();
